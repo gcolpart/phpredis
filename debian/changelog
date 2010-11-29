@@ -1,0 +1,5 @@
+php5-redis (0.1~git20101129-1) unstable; urgency=low
+
+  * Initial release
+
+ -- Gregory Colpart <reg@debian.org>  Mon, 29 Nov 2010 00:59:36 +0100
