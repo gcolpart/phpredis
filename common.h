@@ -4,10 +4,6 @@
 #ifndef REDIS_COMMON_H
 #define REDIS_COMMON_H
 
-static zend_class_entry *redis_ce;
-static zend_class_entry *redis_exception_ce;
-static zend_class_entry *spl_ce_RuntimeException = NULL;
-
 #define redis_sock_name "Redis Socket Buffer"
 #define REDIS_SOCK_STATUS_FAILED 0
 #define REDIS_SOCK_STATUS_DISCONNECTED 1
@@ -25,6 +21,15 @@ static zend_class_entry *spl_ce_RuntimeException = NULL;
 #define REDIS_LIST 3
 #define REDIS_ZSET 4
 #define REDIS_HASH 5
+
+/* options */
+#define REDIS_OPT_SERIALIZER		1
+#define REDIS_OPT_PREFIX		2
+
+/* serializers */
+#define REDIS_SERIALIZER_NONE		0
+#define REDIS_SERIALIZER_PHP 		1
+#define REDIS_SERIALIZER_IGBINARY 	2
 
 #define IF_MULTI() if(redis_sock->mode == MULTI)
 #define IF_MULTI_OR_ATOMIC() if(redis_sock->mode == MULTI || redis_sock->mode == ATOMIC)\
@@ -47,22 +52,23 @@ static zend_class_entry *spl_ce_RuntimeException = NULL;
 
 
 #define MULTI_RESPONSE(callback) IF_MULTI_OR_PIPELINE() { \
-	fold_item *f1 = malloc(sizeof(fold_item)); \
+	fold_item *f1, *current; \
+	f1 = malloc(sizeof(fold_item)); \
 	f1->fun = (void *)callback; \
 	f1->next = NULL; \
-	fold_item *current = redis_sock->current;\
+	current = redis_sock->current;\
 	if(current) current->next = f1; \
 	redis_sock->current = f1; \
   }
 
 #define PIPELINE_ENQUEUE_COMMAND(cmd, cmd_len) request_item *tmp; \
+	struct request_item *current_request;\
 	tmp = malloc(sizeof(request_item));\
 	tmp->request_str = calloc(cmd_len, 1);\
 	memcpy(tmp->request_str, cmd, cmd_len);\
 	tmp->request_size = cmd_len;\
 	tmp->next = NULL;\
-	zval *z_this = getThis(); \
-	struct request_item *current_request = redis_sock->pipeline_current; \
+	current_request = redis_sock->pipeline_current; \
 	if(current_request) {\
 		current_request->next = tmp;\
 	} \
@@ -71,17 +77,18 @@ static zend_class_entry *spl_ce_RuntimeException = NULL;
 		redis_sock->pipeline_head = redis_sock->pipeline_current;\
 	}
 
-#define SOCKET_WRITE_COMMAND(redis_sock, cmd, cmd_len) if(redis_sock_write(redis_sock, cmd, cmd_len) < 0) { \
+#define SOCKET_WRITE_COMMAND(redis_sock, cmd, cmd_len) if(redis_sock_write(redis_sock, cmd, cmd_len TSRMLS_CC) < 0) { \
 	efree(cmd); \
     RETURN_FALSE; \
 }
 
 #define REDIS_SAVE_CALLBACK(callback, closure_context) IF_MULTI_OR_PIPELINE() { \
-	fold_item *f1 = malloc(sizeof(fold_item)); \
+	fold_item *f1, *current; \
+	f1 = malloc(sizeof(fold_item)); \
 	f1->fun = (void *)callback; \
 	f1->ctx = closure_context; \
 	f1->next = NULL; \
-	fold_item *current = redis_sock->current;\
+	current = redis_sock->current;\
 	if(current) current->next = f1; \
 	redis_sock->current = f1; \
 	if(NULL == redis_sock->head) { \
@@ -138,10 +145,18 @@ typedef struct request_item {
 typedef struct {
     php_stream     *stream;
     char           *host;
-    unsigned short port;
+    short          port;
     double         timeout;
     int            failed;
     int            status;
+    int            persistent;
+    int            watching;
+    char           *persistent_id;
+
+    int            serializer;
+
+    char           *prefix;
+    int            prefix_len;
 
     redis_mode     mode;
     fold_item      *head;
